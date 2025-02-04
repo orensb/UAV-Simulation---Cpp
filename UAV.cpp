@@ -165,7 +165,6 @@ void UAV::near_dest(){
         }
     }
     std::pair<double,double> vel = velocity_calc();
-    std::cout<<"Vel.first"<<vel.first<<std::endl;
     pos_x = UAVUtils::round_to_two_decimal(pos_x + (step_t * vel.first));
     pos_y = UAVUtils::round_to_two_decimal(pos_y + (step_t * vel.second));
 }
