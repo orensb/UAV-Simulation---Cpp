@@ -7,17 +7,17 @@
 #include <vector>
 #include <string>
 #include <cmath>
-
+#include <chrono>
+#include <unordered_map>
+#include <mutex>
 
 std::map<std::string, double> readINIfile(const std::string& ini_file);
-
+std::mutex create_uav_lock;
 
 int main() {
 
-
     std::map<std::string,double> parameters;
     parameters = readINIfile("SimParams.ini");
-
 
     // UAV initial parameters
     int N_uav = parameters["N_uav "];
@@ -37,13 +37,17 @@ int main() {
 
     // create a vector of all UAVS objects.
     // create a file for each on of them.
+    auto start = std::chrono::high_resolution_clock::now();
+    std::unordered_map<int,std::stringstream> uav_data;
+    std::unordered_map<int,std::ofstream> uav_files;
+
     std::vector<UAV> UAVS;
     for (int i=0 ; i<N_uav ; i++){
         std:: string uav_name_file = "UAV" + std::to_string(i) + ".txt";
         UAV uav_i(uav_name_file,i, step_t, time, radius, pos_x, pos_y, height, velocity, azimuth);
         UAVS.emplace_back(uav_i);
-        std::ofstream UAV_file(uav_name_file);
-        UAV_file << std::left<< std::setw(10) << "Time"
+        uav_files[i].open(uav_name_file,std::ios::out);
+        uav_data[i] << std::left<< std::setw(10) << "Time"
                 << "| " << std::setw(12) << "X-position"
                 << "| " << std::setw(12) << "Y-position"
                 << "| " << std::setw(10) << "Azimuth"
@@ -51,10 +55,19 @@ int main() {
                 << "| " << std::setw(15) << "Destination"
                 << "| " << std::setw(10) << "Distance to target"
                 << std::endl;
-    }
+        uav_files[i] << uav_data[i].str();
+        uav_data[i].str("");
+        uav_data[i].clear();
+    }   
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double,std::milli> duration = end - start;
+    std::cout << "Time of creating the UAVS: " << duration.count() << " ms" << std::endl;
+
+// With thread it took me 18.5 ms, make sense becuase we dont have much CPU calculation and alot of I/O files. 
 
     // Start simulation loop
     double t = 0; 
+    auto start1 = std::chrono::high_resolution_clock::now();
     while (t < time) {
 
         std::cout << std::fixed << std::setprecision(2);
@@ -81,20 +94,32 @@ int main() {
                 std::cout<< "UAV is near the destination, going to radius. \n";
                 uav.near_dest(); //UAV to close to the centre
             }
-            std::ofstream UAV_file(uav.get_name_file(), std::ios::app);
-            UAV_file <<std::left<< std::setw(10) << (t+step_t)
+            int id = uav.get_uav_id();
+            uav_data[id] <<std::left<< std::setw(10) << (t+step_t)
                   << "| " << std::setw(12) << uav.get_pos_x()
                   << "| " << std::setw(12) << uav.get_pos_y()
                   << "| " << std::setw(10) << uav.get_azimuth() 
                   << "| " << std::setw(11) << option
                   << "| " <<"("<< uav.get_des_x() <<"," << uav.get_des_y()<< std::setw(10) <<")"  
                   <<  "| "  << uav.get_distance()
-
                   << std::endl;
-            UAV_file.close();
+            if (uav_data[id].str().size() > 1000){
+                uav_files[id] << uav_data[id].str();
+                uav_data[id].str("");
+                uav_data[id].clear();
+            }
         }
         t += step_t;
     }
+    for (auto& [id,info] : uav_data){
+        uav_files[id] << info.str();
+        uav_files[id].close();
+    }
+    auto end1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double,std::milli> duration1 = end1 - start1;
+    std::cout<< "Total Main loop time: " << duration1.count() << std::endl;
+    std::cout << "Time of creating the UAVS: " << duration.count() << " ms" << std::endl;
+
     return 0;
 }
 
@@ -129,3 +154,5 @@ std::map<std::string,double> readINIfile(const std::string& ini_file){
     return parameters;
 
 }
+
+
